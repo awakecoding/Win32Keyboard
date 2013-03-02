@@ -66,7 +66,7 @@ HINSTANCE loadKeyboardLayout()
 
 	_stprintf_s(kbdLayoutFilePath, MAX_PATH, _T("%s\\%s"), systemDirectory, layoutFile);
 
-	printf("keyboard layout path: %s\n", kbdLayoutFilePath);
+	//printf("keyboard layout path: %s\n", kbdLayoutFilePath);
 
 	kbdLibrary = LoadLibrary(kbdLayoutFilePath);
 
@@ -180,6 +180,177 @@ int convertVirtualKeyToWChar(int virtualKey, PWCHAR outputChar, PWCHAR deadChar)
 	return charCount;
 }
 
+int ListKeyboardLayouts()
+{
+	int status;
+	HKL list[256];
+
+	/**
+	 * GetKeyboardLayoutList() lists only the keyboard layouts
+	 * available in the keyboard layout switcher, as opposed to
+	 * all possible keyboard layouts.
+	 */
+
+	status = GetKeyboardLayoutList(sizeof(list) / sizeof(HKL), (HKL*) list);
+
+	//printf("ListKeyboardLayouts: %d\n", status);
+
+	return 0;
+}
+
+KbdLayerDescriptor LoadKbdLayerDescriptor(HINSTANCE* kbdLibrary, TCHAR* layoutFile)
+{
+	TCHAR systemDirectory[MAX_PATH];
+	TCHAR kbdLayoutFilePath[MAX_PATH];
+	KbdLayerDescriptor pKbdLayerDescriptor = NULL;
+
+	*kbdLibrary = NULL;
+
+#ifdef BUILD_WOW6432
+	_stprintf_s(systemDirectory, MAX_PATH, _T("%s"), "C:\\Windows\\SysWOW64");
+#else
+	GetSystemDirectory(systemDirectory, MAX_PATH);
+#endif
+
+	_stprintf_s(kbdLayoutFilePath, MAX_PATH, _T("%s\\%s"), systemDirectory, layoutFile);
+
+	printf("Loading %s\n", kbdLayoutFilePath);
+
+	*kbdLibrary = LoadLibrary(kbdLayoutFilePath);
+
+	pKbdLayerDescriptor = (KbdLayerDescriptor) GetProcAddress(*kbdLibrary, "KbdLayerDescriptor");
+
+	if (!pKbdLayerDescriptor)
+		return NULL;
+
+	return pKbdLayerDescriptor;
+}
+
+int PrintKeyboardLayout(TCHAR* kbdName)
+{
+	HKEY hKey;
+	int i, j, k;
+	DWORD dwSize;
+	PKBDTABLES pKbd;
+	HINSTANCE kbdLibrary;
+	DWORD varType = REG_SZ;
+	TCHAR kbdKeyPath[MAX_PATH];
+	TCHAR kbdLayoutFile[64];
+	TCHAR kbdLayoutText[256];
+	PVK_TO_WCHARS pVkToWchars;
+	KbdLayerDescriptor pKbdLayerDescriptor;
+
+	_stprintf_s(kbdKeyPath, sizeof(kbdKeyPath) / sizeof(TCHAR), _T("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\%s"), kbdName);
+
+	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, (LPCTSTR) kbdKeyPath, 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS)
+        	return -1;
+
+	dwSize = 64;
+	if (RegQueryValueEx(hKey, _T("Layout File"), NULL, &varType, (BYTE*) kbdLayoutFile, &dwSize) != ERROR_SUCCESS)
+		return -1;
+
+	dwSize = 256;
+	if (RegQueryValueEx(hKey, _T("Layout Text"), NULL, &varType, (BYTE*) kbdLayoutText, &dwSize) != ERROR_SUCCESS)
+		return -1;
+
+	RegCloseKey(hKey);
+
+	printf("LayoutFile: %s\n", kbdLayoutFile);
+	printf("LayoutText: %s\n", kbdLayoutText);
+
+	pKbdLayerDescriptor = LoadKbdLayerDescriptor(&kbdLibrary, kbdLayoutFile);
+
+	if (!pKbdLayerDescriptor)
+		return -1;
+
+	pKbd = pKbdLayerDescriptor();
+
+	if (!pKbd)
+		return -1;
+
+	printf("pCharModifiers->wMaxModBits: %d\n", pKbd->pCharModifiers->wMaxModBits);
+
+	for (i = 0; pKbd->pVkToWcharTable[i].cbSize; i++)
+	{
+		printf("pVkToWcharTable[%d]:\n", i);
+		printf("\tnModifications: %d\n", pKbd->pVkToWcharTable[i].nModifications);
+		printf("\tcbSize: %d\n", pKbd->pVkToWcharTable[i].cbSize);
+
+		//if (((pKbd->pVkToWcharTable[i].cbSize - 2) / 2) == i)
+		{
+			pVkToWchars = pKbd->pVkToWcharTable[i].pVkToWchars;
+
+			for (j = 0; pVkToWchars[j].VirtualKey; j++)
+			{
+				WCHAR* wch;
+
+				printf("\t\tVirtualKey: 0x%02X Attributes: 0x%02X wch: ",
+					pVkToWchars[j].VirtualKey, pVkToWchars[j].Attributes);
+
+				wch = (WCHAR*) &(pVkToWchars[j].wch);
+
+				for (k = 0; k < i; k++)
+					printf("0x%04X ", wch[k]);
+				printf("\n");
+			}
+		}
+	}
+
+	printf("bMaxVSCtoVK: %d\n", pKbd->bMaxVSCtoVK);
+
+	printf("fLocaleFlags: 0x%08X\n", pKbd->fLocaleFlags);
+
+	printf("nLgMax: %d\n", pKbd->nLgMax);
+	printf("cbLgEntry: %d\n", pKbd->cbLgEntry);
+
+	printf("dwType: 0x%08X\n", pKbd->dwType);
+	printf("dwSubType: 0x%08X\n", pKbd->dwSubType);
+
+	printf("\n");
+
+	if (kbdLibrary)
+		FreeLibrary(kbdLibrary);
+
+	return 0;
+}
+
+int ListAllKeyboardLayouts()
+{
+	DWORD i;
+	HKEY hKey;
+	DWORD status;
+	DWORD cbName;
+	DWORD cSubKeys;
+	TCHAR achKey[KL_NAMELENGTH];
+
+	PrintKeyboardLayout(_T("00000409"));
+	return 0;
+
+	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts"), 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &hKey) != ERROR_SUCCESS)
+        	return -1;
+
+	cSubKeys = 0;
+	status = RegQueryInfoKey(hKey, NULL, NULL, NULL, &cSubKeys, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+    
+	printf( "\nNumber of subkeys: %d\n", cSubKeys);
+
+	for (i = 0; i < cSubKeys; i++) 
+	{ 
+		cbName = sizeof(achKey) / sizeof(TCHAR);
+		status = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, NULL); 
+
+		if (status == ERROR_SUCCESS) 
+		{
+			_tprintf(_T("%s\n"), achKey);
+			PrintKeyboardLayout(achKey);
+		}
+	}
+
+	RegCloseKey(hKey);
+
+	return 0;
+}
+
 int getKeyboardLayoutFile(TCHAR* layoutFile, DWORD bufferSize)
 {
 	HKEY hKey;
@@ -187,9 +358,13 @@ int getKeyboardLayoutFile(TCHAR* layoutFile, DWORD bufferSize)
 	TCHAR kbdName[KL_NAMELENGTH];
 	TCHAR kbdKeyPath[51 + KL_NAMELENGTH];
 
+	ListKeyboardLayouts();
+
+	ListAllKeyboardLayouts();
+
 	GetKeyboardLayoutName(kbdName);
 
-	_stprintf_s(kbdKeyPath, 51 + KL_NAMELENGTH, _T("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\%s"), kbdName);
+	_stprintf_s(kbdKeyPath, sizeof(kbdKeyPath) / sizeof(TCHAR), _T("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\%s"), kbdName);
 
 	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, (LPCTSTR) kbdKeyPath, 0, KEY_QUERY_VALUE, &hKey) != ERROR_SUCCESS)
         	return -1;

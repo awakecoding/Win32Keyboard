@@ -58,7 +58,7 @@ typedef struct
 {
 	PVK_TO_BIT pVkToBit;
 	WORD wMaxModBits;
-	BYTE ModNumber[];
+	BYTE* ModNumber;
 } MODIFIERS, *KBD_LONG_POINTER PMODIFIERS;
 
 typedef struct _VSC_VK
@@ -72,6 +72,13 @@ typedef struct _VK_VSC
 	BYTE Vk;
 	BYTE Vsc;
 } VK_VSC, *KBD_LONG_POINTER PVK_VSC;
+
+typedef struct _VK_TO_WCHARS
+{
+	BYTE VirtualKey;
+	BYTE Attributes;
+	WCHAR* wch;
+} VK_TO_WCHARS, *KBD_LONG_POINTER PVK_TO_WCHARS;
 
 #define TYPEDEF_VK_TO_WCHARS(n) typedef struct _VK_TO_WCHARS##n { \
 	BYTE VirtualKey; \
@@ -92,7 +99,7 @@ TYPEDEF_VK_TO_WCHARS(10)
 
 typedef struct _VK_TO_WCHAR_TABLE
 {
-	PVK_TO_WCHARS1 pVkToWchars;
+	PVK_TO_WCHARS pVkToWchars;
 	BYTE nModifications;
 	BYTE cbSize;
 } VK_TO_WCHAR_TABLE, *KBD_LONG_POINTER PVK_TO_WCHAR_TABLE;
