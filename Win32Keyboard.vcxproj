@@ -13,9 +13,12 @@
   <ItemGroup>
     <ClCompile Include="kbd.c" />
     <ClCompile Include="kbd_ext.c" />
+    <ClCompile Include="vkcodes.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="kbd.h" />
     <ClInclude Include="kbd_ext.h" />
+    <ClInclude Include="vkcodes.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{B138DADA-2AA8-422D-86E8-76226A1D382D}</ProjectGuid>

@@ -44,6 +44,15 @@ int convertVirtualKeyToWChar(int virtualKey, PWCHAR out, PWCHAR buffer);
     #define KBD_LONG_POINTER
 #endif
 
+#define KBDEXT		(USHORT) 0x0100 
+#define KBDMULTIVK	(USHORT) 0x0200 
+#define KBDSPECIAL	(USHORT) 0x0400 
+#define KBDNUMPAD	(USHORT) 0x0800 
+#define KBDUNICODE	(USHORT) 0x1000 
+#define KBDINJECTEDVK	(USHORT) 0x2000 
+#define KBDMAPPEDVK	(USHORT) 0x4000 
+#define KBDBREAK	(USHORT) 0x8000 
+
 #define CAPLOK		0x01
 #define WCH_NONE	0xF000
 #define WCH_DEAD	0xF001

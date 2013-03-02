@@ -29,6 +29,7 @@
 #include <tchar.h>
 
 #include "kbd_ext.h"
+#include "vkcodes.h"
 
 typedef PKBDTABLES(CALLBACK* KbdLayerDescriptor)(VOID);
 
@@ -42,8 +43,8 @@ PVK_TO_WCHARS7 pVkToWchars7 = NULL;
 PVK_TO_WCHARS8 pVkToWchars8 = NULL;
 PVK_TO_WCHARS9 pVkToWchars9 = NULL;
 PVK_TO_WCHARS10 pVkToWchars10 = NULL;
-PMODIFIERS pCharModifiers;
-PDEADKEY pDeadKey;
+PMODIFIERS pgCharModifiers;
+PDEADKEY pgDeadKey;
 
 HINSTANCE loadKeyboardLayout()
 {
@@ -98,8 +99,8 @@ HINSTANCE loadKeyboardLayout()
 	}
 	while (pKbd->pVkToWcharTable[i].cbSize != 0);
 
-	pCharModifiers = pKbd->pCharModifiers;
-	pDeadKey = pKbd->pDeadKey;
+	pgCharModifiers = pKbd->pCharModifiers;
+	pgDeadKey = pKbd->pDeadKey;
 
 	return kbdLibrary;
 }
@@ -129,9 +130,9 @@ int convertVirtualKeyToWChar(int virtualKey, PWCHAR outputChar, PWCHAR deadChar)
 
 	do
 	{
-		state = GetAsyncKeyState(pCharModifiers->pVkToBit[i].Vk);
+		state = GetAsyncKeyState(pgCharModifiers->pVkToBit[i].Vk);
 
-		if (pCharModifiers->pVkToBit[i].Vk == VK_SHIFT)
+		if (pgCharModifiers->pVkToBit[i].Vk == VK_SHIFT)
 			shift = i + 1; // Get modification number for Shift key
 
 		if (state & ~SHRT_MAX)
@@ -144,7 +145,7 @@ int convertVirtualKeyToWChar(int virtualKey, PWCHAR outputChar, PWCHAR deadChar)
 
 		i++;
 	}
-	while (pCharModifiers->pVkToBit[i].Vk != 0);
+	while (pgCharModifiers->pVkToBit[i].Vk != 0);
 
 	SEARCH_VK_IN_CONVERSION_TABLE(1)
 	SEARCH_VK_IN_CONVERSION_TABLE(2)
@@ -163,18 +164,18 @@ int convertVirtualKeyToWChar(int virtualKey, PWCHAR outputChar, PWCHAR deadChar)
 
 		do
 		{
-			baseChar = (WCHAR) pDeadKey[i].dwBoth;
-			diacritic = (WCHAR) (pDeadKey[i].dwBoth >> 16);
+			baseChar = (WCHAR) pgDeadKey[i].dwBoth;
+			diacritic = (WCHAR) (pgDeadKey[i].dwBoth >> 16);
 
 			if ((baseChar == *outputChar) && (diacritic == *deadChar))
 			{
 				*deadChar = 0;
-				*outputChar = (WCHAR)pDeadKey[i].wchComposed;
+				*outputChar = (WCHAR) pgDeadKey[i].wchComposed;
 			}
 
 			i++;
 		}
-		while (pDeadKey[i].dwBoth != 0);
+		while (pgDeadKey[i].dwBoth != 0);
 	}
 
 	return charCount;
@@ -226,18 +227,86 @@ KbdLayerDescriptor LoadKbdLayerDescriptor(HINSTANCE* kbdLibrary, TCHAR* layoutFi
 	return pKbdLayerDescriptor;
 }
 
+void PrintVirtualKeyFlags(USHORT flags)
+{
+	int count = 0;
+
+	if (flags & KBDEXT)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDEXT");
+		count++;
+	}
+	if (flags & KBDMULTIVK)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDMULTIVK");
+		count++;
+	}
+	if (flags & KBDSPECIAL)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDSPECIAL");
+		count++;
+	}
+	if (flags & KBDNUMPAD)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDNUMPAD");
+		count++;
+	}
+	if (flags & KBDUNICODE)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDUNICODE");
+		count++;
+	}
+	if (flags & KBDINJECTEDVK)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDINJECTEDVK");
+		count++;
+	}
+	if (flags & KBDMAPPEDVK)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDMAPPEDVK");
+		count++;
+	}
+	if (flags & KBDBREAK)
+	{
+		if (count)
+			printf(" | ");
+		printf("KBDBREAK");
+		count++;
+	}
+}
+
 int PrintKeyboardLayout(TCHAR* kbdName)
 {
 	HKEY hKey;
 	int i, j, k;
 	DWORD dwSize;
 	PKBDTABLES pKbd;
+	BYTE* ModNumber;
+	PDEADKEY pDeadKey;
 	HINSTANCE kbdLibrary;
 	DWORD varType = REG_SZ;
 	TCHAR kbdKeyPath[MAX_PATH];
 	TCHAR kbdLayoutFile[64];
 	TCHAR kbdLayoutText[256];
 	PVK_TO_WCHARS pVkToWchars;
+	PVSC_VK pVSCtoVK_E0;
+	PVSC_VK pVSCtoVK_E1;
+	PVK_TO_BIT pVkToBit;
+	USHORT *KBD_LONG_POINTER pusVSCtoVK;
 	KbdLayerDescriptor pKbdLayerDescriptor;
 
 	_stprintf_s(kbdKeyPath, sizeof(kbdKeyPath) / sizeof(TCHAR), _T("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\%s"), kbdName);
@@ -268,7 +337,28 @@ int PrintKeyboardLayout(TCHAR* kbdName)
 	if (!pKbd)
 		return -1;
 
+	/* Modifier Keys */
+
+	i = 0;
+
+	for (pVkToBit = pKbd->pCharModifiers->pVkToBit; pVkToBit->Vk != 0; pVkToBit++)
+	{
+		printf("pCharModifiers->pVkToBit[%d]: Vk: %s (0x%02X) ModBits: 0x%02X\n", i,
+			keyboard_get_virtual_key_code_name(pVkToBit->Vk), pVkToBit->Vk, pVkToBit->ModBits);
+	}
+
+	ModNumber = (BYTE*) &(pKbd->pCharModifiers->ModNumber);
 	printf("pCharModifiers->wMaxModBits: %d\n", pKbd->pCharModifiers->wMaxModBits);
+
+	i = 0;
+	ModNumber = (BYTE*) &pKbd->pCharModifiers->ModNumber;
+
+	for (i = 0; i < pKbd->pCharModifiers->wMaxModBits; i++)
+	{
+		printf("pCharModifiers->ModNumber[%d]: 0x%02X\n", i, ModNumber[i]);
+	}
+	 
+	/* Characters */
 
 	for (i = 0; pKbd->pVkToWcharTable[i].cbSize; i++)
 	{
@@ -296,12 +386,80 @@ int PrintKeyboardLayout(TCHAR* kbdName)
 		}
 	}
 
+	/* Diacritics */
+
+	if (pKbd->pDeadKey)
+	{
+		i = 0;
+
+		for (pDeadKey = pKbd->pDeadKey; pDeadKey->dwBoth != 0; pDeadKey++)
+		{
+			printf("DeadKey[%d]: dwBoth: 0x%08X uFlags: 0x%04X wchComposed: 0x%04X\n",
+				i, pDeadKey->dwBoth, pDeadKey->uFlags, pDeadKey->wchComposed);
+			i++;
+		}
+	}
+
+	/* Key Names */
+
+	/* Scan Codes to Virtual Keys */
+
+	i = 0;
+
+	for (pusVSCtoVK = pKbd->pusVSCtoVK; i < (int) pKbd->bMaxVSCtoVK; pusVSCtoVK++)
+	{
+		printf("VSCtoVK[%d]: %d\n", i, *pusVSCtoVK);
+		i++;
+	}
+
 	printf("bMaxVSCtoVK: %d\n", pKbd->bMaxVSCtoVK);
+
+	i = 0;
+
+	for (pVSCtoVK_E0 = pKbd->pVSCtoVK_E0; i < (int) pKbd->bMaxVSCtoVK; pVSCtoVK_E0++)
+	{
+		USHORT vkcode, flags;
+
+		vkcode = pVSCtoVK_E0->Vk & 0xFF;
+		flags = pVSCtoVK_E0->Vk & 0xFF00;
+
+		printf("pVSCtoVK_E0[%d]: 0x%02X -> %s (0x%04X) flags: 0x%04X (", i, pVSCtoVK_E0->Vsc,
+			keyboard_get_virtual_key_code_name(vkcode), vkcode, flags);
+
+		PrintVirtualKeyFlags(flags);
+		printf(")\n");
+
+		i++;
+	}
+
+	i = 0;
+
+	for (pVSCtoVK_E1 = pKbd->pVSCtoVK_E1; i < (int) pKbd->bMaxVSCtoVK; pVSCtoVK_E1++)
+	{
+		USHORT vkcode, flags;
+
+		vkcode = pVSCtoVK_E1->Vk & 0xFF;
+		flags = pVSCtoVK_E1->Vk & 0xFF00;
+
+		printf("pVSCtoVK_E1[%d]: 0x%02X -> %s (0x%04X) flags: 0x%04X (", i, pVSCtoVK_E1->Vsc,
+			keyboard_get_virtual_key_code_name(vkcode), vkcode, flags);
+
+		PrintVirtualKeyFlags(flags);
+		printf(")\n");
+
+		i++;
+	}
+
+	/* Locale Flags */
 
 	printf("fLocaleFlags: 0x%08X\n", pKbd->fLocaleFlags);
 
+	/* Ligatures */
+
 	printf("nLgMax: %d\n", pKbd->nLgMax);
 	printf("cbLgEntry: %d\n", pKbd->cbLgEntry);
+
+	/* Type and SubType (Optional) */
 
 	printf("dwType: 0x%08X\n", pKbd->dwType);
 	printf("dwSubType: 0x%08X\n", pKbd->dwSubType);
@@ -323,8 +481,10 @@ int ListAllKeyboardLayouts()
 	DWORD cSubKeys;
 	TCHAR achKey[KL_NAMELENGTH];
 
-	PrintKeyboardLayout(_T("00000409"));
-	return 0;
+	//PrintKeyboardLayout(_T("00000409")); /* US */
+	//PrintKeyboardLayout(_T("00011009")); /* CAN */
+	
+	//return 0;
 
 	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts"), 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &hKey) != ERROR_SUCCESS)
         	return -1;

@@ -26,8 +26,10 @@
  */
 
 #include "kbd_ext.h"
+#include "vkcodes.h"
 
 #include <stdio.h>
+#include <tchar.h>
 #include <windows.h>
 
 int nChar;
@@ -41,13 +43,16 @@ LRESULT WINAPI KeyEvent(int nCode, WPARAM wParam, LPARAM lParam)
 {
 	if ((nCode == HC_ACTION) && ((wParam == WM_SYSKEYDOWN) || (wParam == WM_KEYDOWN)))
 	{
+		char* vkname;
 		kbdStruct = *((KBDLLHOOKSTRUCT*) lParam);
 		nChar = convertVirtualKeyToWChar(kbdStruct.vkCode, (PWCHAR) &outputChar, (PWCHAR) &deadChar);
 
 		if (nChar > 0)
 		{
-                        fwrite(&outputChar, 1, sizeof(WCHAR), keylog);
-                        fflush(keylog);
+			vkname = keyboard_get_virtual_key_code_name(kbdStruct.vkCode);
+
+			_tprintf(_T("SCANCODE: 0x%04X FLAGS: 0x%04X VKCODE: %s (0x%04X) WCHAR: 0x%04X\n"),
+				kbdStruct.scanCode, kbdStruct.flags, vkname, kbdStruct.vkCode, outputChar);
 		}
 	}
 
@@ -56,14 +61,12 @@ LRESULT WINAPI KeyEvent(int nCode, WPARAM wParam, LPARAM lParam)
 
 int main(int argc, char* argv[])
 {
-	//MSG message;
+	MSG message;
 	HINSTANCE kbdLibrary;
 
 	deadChar = 0;
 	kbdLibrary = loadKeyboardLayout();
 
-#if 0
-	keylog = fopen("C:\\keylog.txt", "wb");
 	hKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL, (HOOKPROC) KeyEvent, GetModuleHandle(NULL), 0);
 
 	while (GetMessage(&message, NULL, 0, 0))
@@ -73,8 +76,6 @@ int main(int argc, char* argv[])
 	}
 
 	UnhookWindowsHookEx(hKeyHook);
-	fclose(keylog);
-#endif
 
 	return 0;
 }
